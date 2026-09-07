@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-09-07
+
 ### Features
 
 - **OpenCode Go provider** — Select OpenCode Go in Settings with your API key. The model list is fetched live from the provider (refreshable, cached 1h), and free models work without a key. Requests to CORS-restricted providers (OpenCode Go/Zen, Anthropic) are routed through the bundled Cloudflare Worker proxy automatically.
