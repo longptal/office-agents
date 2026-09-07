@@ -1,0 +1,13 @@
+{
+  "name": "@office-agents/proxy",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Cloudflare Worker CORS proxy for Office Agents — lets browser-based Office add-ins reach LLM providers (opencode-go, Anthropic, ...) that don't send CORS headers.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "publish:worker": "wrangler deploy",
+    "tail": "wrangler tail"
+  }
+}

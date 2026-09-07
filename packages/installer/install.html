@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Office Agents — Install</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; line-height: 1.6; padding: 40px 20px; }
+    .container { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 2em; margin-bottom: 8px; color: #58a6ff; }
+    .subtitle { color: #8b949e; margin-bottom: 32px; font-size: 1.1em; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 28px; margin-bottom: 20px; }
+    .card h2 { font-size: 1.3em; margin-bottom: 16px; color: #f0f6fc; display: flex; align-items: center; gap: 8px; }
+    .btn { display: inline-block; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 1em; transition: transform 0.1s, background 0.2s; }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-mac { background: #238636; color: #fff; }
+    .btn-mac:hover { background: #2ea043; }
+    .btn-win { background: #1f6feb; color: #fff; }
+    .btn-win:hover { background: #388bfd; }
+    .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; margin-left: 12px; }
+    .btn-secondary:hover { background: #30363d; }
+    .steps { margin: 20px 0; padding-left: 20px; }
+    .steps li { margin-bottom: 8px; }
+    .config { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin: 16px 0; font-family: 'SF Mono', Monaco, monospace; font-size: 0.9em; }
+    .config-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #21262d; }
+    .config-row:last-child { border-bottom: none; }
+    .config-key { color: #8b949e; }
+    .config-val { color: #58a6ff; }
+    .os-icon { font-size: 1.4em; }
+    .footer { text-align: center; margin-top: 32px; color: #484f58; font-size: 0.85em; }
+    .proxy-url { background: #1c2128; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; font-family: monospace; color: #f0883e; display: inline-block; user-select: all; cursor: pointer; }
+    .credit { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px 24px; margin-top: 24px; font-size: 0.88em; color: #8b949e; }
+    .credit strong { color: #c9d1d9; }
+    .credit a { color: #58a6ff; text-decoration: none; }
+    .credit a:hover { text-decoration: underline; }
+    .badge { display: inline-block; background: #1f6feb33; color: #58a6ff; border: 1px solid #1f6feb55; border-radius: 4px; padding: 2px 8px; font-size: 0.8em; font-weight: 600; margin-left: 8px; vertical-align: middle; }
+    .curl-box { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; margin: 16px 0; display: flex; align-items: center; gap: 12px; }
+    .curl-box code { flex: 1; font-family: 'SF Mono', Monaco, monospace; font-size: 0.85em; color: #f0883e; word-break: break-all; user-select: all; }
+    .copy-btn { background: #238636; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 0.85em; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
+    .copy-btn:hover { background: #2ea043; }
+    .copy-btn.copied { background: #1f6feb; }
+    .terminal-hint { color: #8b949e; font-size: 0.85em; margin-top: 8px; }
+    .fallback { margin-top: 16px; padding-top: 16px; border-top: 1px solid #30363d; }
+    .fallback summary { color: #8b949e; cursor: pointer; font-size: 0.85em; }
+    .fallback p { margin-top: 8px; color: #8b949e; font-size: 0.85em; }
+    .fallback code { background: #1c2128; border: 1px solid #30363d; border-radius: 4px; padding: 2px 6px; font-family: 'SF Mono', Monaco, monospace; font-size: 0.85em; color: #f0883e; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Office Agents <span class="badge">by longpt.al</span></h1>
+    <p class="subtitle">AI chat assistant for Word, Excel & PowerPoint — one-click install</p>
+
+    <div class="card">
+      <h2><span class="os-icon">🍎</span> macOS</h2>
+      <p>Open <strong>Terminal</strong> (Cmd+Space → type "Terminal"), paste this command, press Enter:</p>
+      <div class="curl-box">
+        <code id="installCmd">curl -fsSL https://openword-longpt.pages.dev/installer/install-mac.command | bash</code>
+        <button class="copy-btn" onclick="copyCmd('installCmd', this)">Copy</button>
+      </div>
+      <p class="terminal-hint">This downloads and runs the installer directly — no file saved, no Gatekeeper issues.</p>
+      <ol class="steps">
+        <li>Open Terminal (Cmd+Space → type "Terminal")</li>
+        <li>Paste the command above and press Enter</li>
+        <li>Quit and reopen Word, Excel, PowerPoint</li>
+        <li>Open Home tab → Add-ins → your add-in appears</li>
+      </ol>
+      <details class="fallback">
+        <summary>Prefer downloading the file? (may require extra steps)</summary>
+        <p>If you download <code>install-mac.command</code> via browser, macOS may block it with "cannot be executed" error. Fix by running in Terminal:<br>
+        <code>xattr -d com.apple.quarantine ~/Downloads/install-mac.command</code><br>
+        then double-click the file.</p>
+        <div style="margin: 12px 0;">
+          <a href="install-mac.command" download class="btn btn-secondary" style="margin-left:0">Download install-mac.command</a>
+        </div>
+      </details>
+      <details class="fallback">
+        <summary>To uninstall</summary>
+        <div class="curl-box" style="margin-top: 12px;">
+          <code id="uninstallCmd">curl -fsSL https://openword-longpt.pages.dev/installer/uninstall-mac.command | bash</code>
+          <button class="copy-btn" onclick="copyCmd('uninstallCmd', this)">Copy</button>
+        </div>
+        <div style="margin: 12px 0;">
+          <a href="uninstall-mac.command" download class="btn btn-secondary" style="margin-left:0">Download uninstall-mac.command</a>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2><span class="os-icon">🪟</span> Windows</h2>
+      <p>Download and double-click to install all three add-ins (no admin required):</p>
+      <div style="margin: 16px 0;">
+        <a href="install-windows.bat" download class="btn btn-win">Download Installer</a>
+        <a href="uninstall-windows.bat" download class="btn btn-secondary">Uninstaller</a>
+      </div>
+      <ol class="steps">
+        <li>Download <code>install-windows.bat</code></li>
+        <li>Double-click it</li>
+        <li>Close and reopen Word, Excel, PowerPoint</li>
+        <li>Open Home tab → Add-ins → your add-in appears</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>⚙️ Configure your AI provider</h2>
+      <p>After installing, open the add-in's <strong>Settings</strong> panel and configure:</p>
+      <div class="config">
+        <div class="config-row"><span class="config-key">Provider</span><span class="config-val">opencode-go (or anthropic, openai, ...)</span></div>
+        <div class="config-row"><span class="config-key">API Key</span><span class="config-val">your API key</span></div>
+        <div class="config-row"><span class="config-key">Model</span><span class="config-val">glm-5.2, deepseek-v4-flash, ...</span></div>
+        <div class="config-row"><span class="config-key">CORS Proxy</span><span class="config-val">ON</span></div>
+        <div class="config-row"><span class="config-key">Proxy URL</span><span class="config-val"><span class="proxy-url">https://office-agents-cors-proxy.longpt-hrt.workers.dev</span></span></div>
+      </div>
+      <p style="color: #8b949e; font-size: 0.9em;">The CORS proxy is required for opencode-go and Anthropic — their APIs don't send CORS headers, so the Office webview blocks direct requests without it.</p>
+    </div>
+
+    <div class="credit">
+      <p><strong>Credits & Attribution</strong></p>
+      <p style="margin-top: 8px;">
+        This deployment is customized and maintained by <strong>longpt.al</strong>,
+        built on top of the open-source
+        <a href="https://github.com/hewliyang/office-agents">Office Agents</a>
+        project by <a href="https://github.com/hewliyang">hewliyang</a>.
+        All credit for the original source code, architecture, and design goes to
+        the original author. This fork adds opencode-go provider support, a
+        bundled CORS proxy, updated model catalogs, and one-click installers.
+      </p>
+      <p style="margin-top: 8px;">
+        Source code is open under the MIT license — see the
+        <a href="https://github.com/hewliyang/office-agents">original repository</a>.
+      </p>
+    </div>
+
+    <div class="footer">
+      Customized by <a href="https://longpt.al" style="color: #58a6ff;">longpt.al</a>
+      · Built on <a href="https://github.com/hewliyang/office-agents" style="color: #58a6ff;">Office Agents</a>
+      · BYOK (Bring Your Own Key)
+    </div>
+  </div>
+  <script>
+    function copyCmd(id, btn) {
+      var text = document.getElementById(id).textContent;
+      navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(function() {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+    (function() {
+      var PROXY = 'https://office-agents-cors-proxy.longpt-hrt.workers.dev';
+      // Track page visit
+      navigator.sendBeacon(PROXY + '/track?type=visit&detail=install.html');
+      // Track downloads
+      document.querySelectorAll('a[download]').forEach(function(a) {
+        a.addEventListener('click', function() {
+          var file = a.getAttribute('href').split('/').pop();
+          navigator.sendBeacon(PROXY + '/track?type=download&detail=' + file);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

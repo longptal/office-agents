@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixes
+
+- **OpenCode Go `MissingSessionID` error** — OpenCode Go/Zen gateways reject requests that lack a stable per-conversation session ID. The runtime now sends `x-opencode-session` (plus `sessionId` for prompt caching) on every streaming request to `opencode`/`opencode-go` models or any endpoint on `opencode.ai`, using the current chat session ID as the stable value.
+
 ## [0.0.7] - 2026-05-12
 
 ### Changed

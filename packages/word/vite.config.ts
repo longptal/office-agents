@@ -26,7 +26,7 @@ async function getHttpsOptions() {
 export default defineConfig(async ({ mode }) => {
   const dev = mode === "development";
   const urlDev = "https://localhost:3002/";
-  const urlProd = "https://openword.pages.dev/";
+  const urlProd = "https://openword-longpt.pages.dev/";
 
   return {
     root: "src",

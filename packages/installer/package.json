@@ -1,0 +1,7 @@
+{
+  "name": "@office-agents/installer",
+  "version": "0.0.1",
+  "private": true,
+  "description": "One-click installer scripts for Office Agents add-ins (macOS + Windows).",
+  "license": "MIT"
+}

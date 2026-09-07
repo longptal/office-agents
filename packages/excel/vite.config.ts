@@ -26,7 +26,7 @@ async function getHttpsOptions() {
 export default defineConfig(async ({ mode }) => {
   const dev = mode === "development";
   const urlDev = "https://localhost:3000/";
-  const urlProd = "https://openexcel.pages.dev/";
+  const urlProd = "https://openexcel-longpt.pages.dev/";
 
   return {
     root: "src",

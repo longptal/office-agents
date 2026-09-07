@@ -47,6 +47,14 @@ export class ChatController {
     return this.#runtime.getModelsForProvider(provider);
   }
 
+  getDynamicModelsForProvider(provider: string): Model<Api>[] {
+    return this.#runtime.getDynamicModelsForProvider(provider);
+  }
+
+  async refreshModels(): Promise<Model<Api>[]> {
+    return this.#runtime.refreshModels();
+  }
+
   sendMessage(content: string, attachments?: string[]) {
     return this.#runtime.sendMessage(content, attachments);
   }

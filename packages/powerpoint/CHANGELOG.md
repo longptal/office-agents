@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Features
+
+- **OpenCode Go provider** — Select OpenCode Go in Settings with your API key. The model list is fetched live from the provider (refreshable, cached 1h), and free models work without a key. Requests to CORS-restricted providers (OpenCode Go/Zen, Anthropic) are routed through the bundled Cloudflare Worker proxy automatically.
+- **One-click installer** — macOS/Windows install & uninstall scripts plus an install page, hosted on the deployed site.
+
+### Fixes
+
+- **OpenCode Go `MissingSessionID` error** — The OpenCode Go/Zen gateway rejects requests without a stable per-conversation `x-opencode-session` header. It is now sent on every request (together with `sessionId` for prompt caching), keyed to the current chat session.
+- **Interrupted streams keep partial output** — When a stream ends abnormally mid-response, already-generated text/thinking is preserved with an interruption notice instead of being dropped.
+
+### Changed
+
+- **Hosting** — Production URLs now point at `openppt-longpt.pages.dev` (CI deploys there).
+
 ## [0.0.6] - 2026-05-12
 
 ### Changed

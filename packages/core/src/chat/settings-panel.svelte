@@ -4,9 +4,11 @@
     buildAuthorizationUrl,
     exchangeOAuthCode,
     generatePKCE,
+    isModelFree,
     listFetchProviders,
     listImageSearchProviders,
     listSearchProviders,
+    loadCachedModels,
     loadOAuthCredentials,
     loadSavedConfig,
     loadWebConfig,
@@ -15,6 +17,7 @@
     saveConfig,
     saveOAuthCredentials,
     saveWebConfig,
+    supportsDynamicModels,
     THINKING_LEVELS,
     type OAuthFlowState,
     type ThinkingLevel,
@@ -29,6 +32,7 @@
     FolderUp,
     LogOut,
     Plus,
+    RefreshCw,
     Trash2,
   } from "lucide-svelte";
   import { getChatContext } from "./chat-runtime-context";
@@ -77,9 +81,33 @@
     $runtimeState.providerConfig?.expandToolCalls ?? false,
   );
   const isCustom = $derived(provider === "custom");
-  const models = $derived(
+  let modelsVersion = $state(0);
+  const staticModels = $derived(
     provider && !isCustom ? chat.getModelsForProvider(provider) : [],
   );
+  const dynamicModels = $derived(
+    provider && !isCustom
+      ? (() => {
+          void modelsVersion;
+          return chat.getDynamicModelsForProvider(provider);
+        })()
+      : [],
+  );
+  const models = $derived([...staticModels, ...dynamicModels]);
+  const modelIds = $derived(new Set(models.map((m) => m.id)));
+  const isFreeModel = $derived(
+    Boolean(provider && model && isModelFree(provider, model)),
+  );
+  const canRefreshModels = $derived(
+    !isCustom && supportsDynamicModels(provider) && Boolean(apiKey),
+  );
+  let modelsLoading = $state(false);
+  let modelsError = $state<string | null>(null);
+  let manualModelId = $state("");
+
+  $effect(() => {
+    if (canRefreshModels) loadModels();
+  });
   const hasOAuth = $derived(provider in OAUTH_PROVIDERS);
   const searchProviders = listSearchProviders();
   const imageSearchProviders = listImageSearchProviders();
@@ -131,6 +159,10 @@
     customBaseUrl = nextCustomBaseUrl;
     authMethod = nextAuthMethod;
 
+    const nextIsFree =
+      nextProvider !== "custom" &&
+      Boolean(nextModel && isModelFree(nextProvider, nextModel));
+
     const isValid =
       nextProvider === "custom"
         ? Boolean(
@@ -140,9 +172,7 @@
               nextModel &&
               nextApiKey,
           )
-        : Boolean(nextProvider && nextApiKey && nextModel);
-
-    if (!isValid) return;
+        : Boolean(nextProvider && nextModel && (nextApiKey || nextIsFree));
 
     const config = {
       provider: nextProvider,
@@ -159,7 +189,8 @@
     };
 
     saveConfig(ns, config);
-    chat.setProviderConfig(config);
+    if (isValid) chat.setProviderConfig(config);
+    else if (!nextApiKey && nextIsFree) chat.setProviderConfig(config);
   }
 
   function updateWebSettings(
@@ -192,6 +223,31 @@
     });
   }
 
+  async function loadModels(forceRefresh = false) {
+    if (!provider || isCustom || !supportsDynamicModels(provider)) return;
+    if (!apiKey) {
+      modelsError = null;
+      return;
+    }
+    if (!forceRefresh) {
+      const cached = loadCachedModels(ns, provider);
+      if (cached) {
+        modelsError = null;
+        return;
+      }
+    }
+    modelsLoading = true;
+    modelsError = null;
+    try {
+      await chat.refreshModels();
+      modelsVersion++;
+    } catch (err) {
+      modelsError = err instanceof Error ? err.message : "Failed to load models";
+    } finally {
+      modelsLoading = false;
+    }
+  }
+
   function handleProviderChange(newProvider: string) {
     if (newProvider === "custom") {
       updateAndSync({ provider: newProvider, model: "", authMethod: "apikey" });
@@ -206,6 +262,8 @@
         model: providerModels[0]?.id || "",
         authMethod: keepOAuth,
       });
+      modelsError = null;
+      loadModels();
     }
 
     if (!(newProvider in OAUTH_PROVIDERS)) {
@@ -422,23 +480,97 @@
       {/if}
 
       {#if !isCustom && provider}
-        <label class="block">
-          <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
-            Model
-          </span>
-          <select
-            value={model}
-            onchange={(event) =>
-              updateAndSync({ model: (event.currentTarget as HTMLSelectElement).value })}
-            class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-sm px-3 py-2 border border-(--chat-border) focus:outline-none focus:border-(--chat-border-active) disabled:opacity-50 disabled:cursor-not-allowed"
-            style={inputStyle}
-          >
-            <option value="">Select model...</option>
-            {#each models as availableModel (availableModel.id)}
-              <option value={availableModel.id}>{availableModel.name}</option>
-            {/each}
-          </select>
-        </label>
+        <div>
+          <div class="flex items-end gap-2">
+            <label class="block flex-1">
+              <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
+                Model
+              </span>
+              <select
+                value={model}
+                onchange={(event) =>
+                  updateAndSync({ model: (event.currentTarget as HTMLSelectElement).value })}
+                class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-sm px-3 py-2 border border-(--chat-border) focus:outline-none focus:border-(--chat-border-active) disabled:opacity-50 disabled:cursor-not-allowed"
+                style={inputStyle}
+                disabled={modelsLoading}
+              >
+                <option value="">Select model...</option>
+                {#each staticModels as availableModel (availableModel.id)}
+                  <option value={availableModel.id}>{availableModel.name}{isModelFree(provider, availableModel.id) ? " · free" : ""}</option>
+                {/each}
+                {#if dynamicModels.length > 0}
+                  <option disabled>──────────</option>
+                  {#each dynamicModels as availableModel (availableModel.id)}
+                    <option value={availableModel.id}>{availableModel.name} (new){isModelFree(provider, availableModel.id) ? " · free" : ""}</option>
+                  {/each}
+                {/if}
+              </select>
+            </label>
+            {#if supportsDynamicModels(provider)}
+              <button
+                type="button"
+                onclick={() => loadModels(true)}
+                disabled={!canRefreshModels || modelsLoading}
+                title={canRefreshModels ? "Refresh model list from provider" : "Enter API key to refresh"}
+                class="shrink-0 flex items-center justify-center w-9 h-9 mb-0 text-xs bg-(--chat-input-bg) border border-(--chat-border) text-(--chat-text-secondary) hover:border-(--chat-border-active) hover:text-(--chat-text-primary) disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                style="border-radius: var(--chat-radius)"
+              >
+                <RefreshCw size={13} class={modelsLoading ? "animate-spin" : ""} />
+              </button>
+            {/if}
+          </div>
+          {#if modelsLoading}
+            <p class="text-[10px] text-(--chat-text-muted) mt-1">Loading models…</p>
+          {:else if modelsError}
+            <p class="text-[10px] text-(--chat-error) mt-1">{modelsError}</p>
+          {:else if canRefreshModels}
+            <p class="text-[10px] text-(--chat-text-muted) mt-1">
+              {models.length} models{dynamicModels.length > 0 ? ` (${dynamicModels.length} new from API)` : ""}
+            </p>
+          {:else if supportsDynamicModels(provider) && !apiKey}
+            <p class="text-[10px] text-(--chat-text-muted) mt-1">
+              Enter API key above to load available models from {provider}
+            </p>
+          {/if}
+          {#if supportsDynamicModels(provider)}
+            <div class="mt-2">
+              <div class="flex gap-1">
+                <input
+                  type="text"
+                  bind:value={manualModelId}
+                  placeholder="Or enter model ID manually…"
+                  class="flex-1 bg-(--chat-input-bg) text-(--chat-text-primary) text-sm px-3 py-1.5 border border-(--chat-border) placeholder:text-(--chat-text-muted) focus:outline-none focus:border-(--chat-border-active)"
+                  style={inputStyle}
+                  onkeydown={(event) => {
+                    if (event.key === "Enter" && manualModelId.trim()) {
+                      updateAndSync({ model: manualModelId.trim() });
+                      manualModelId = "";
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onclick={() => {
+                    if (manualModelId.trim()) {
+                      updateAndSync({ model: manualModelId.trim() });
+                      manualModelId = "";
+                    }
+                  }}
+                  disabled={!manualModelId.trim()}
+                  class="shrink-0 px-3 py-1.5 text-xs bg-(--chat-input-bg) border border-(--chat-border) text-(--chat-text-secondary) hover:border-(--chat-border-active) hover:text-(--chat-text-primary) disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  style="border-radius: var(--chat-radius)"
+                >
+                  Set
+                </button>
+              </div>
+              {#if model && !modelIds.has(model)}
+                <p class="text-[10px] text-(--chat-text-muted) mt-1">
+                  Using custom model: <span class="text-(--chat-text-secondary)">{model}</span>
+                </p>
+              {/if}
+            </div>
+          {/if}
+        </div>
       {/if}
 
       {#if hasOAuth}
@@ -559,17 +691,30 @@
       {#if showApiKeyInput}
         <label class="block">
           <span class="block text-xs text-(--chat-text-secondary) mb-1.5">
-            API Key
+            API Key {#if isFreeModel}<span class="text-(--chat-text-muted) font-normal">(optional for free model)</span>{/if}
           </span>
           <div class="relative">
             <input
               type={showKey ? "text" : "password"}
               bind:value={apiKey}
-              oninput={() => updateAndSync({ apiKey })}
-              placeholder="Enter your API key"
-              class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-sm px-3 py-2 pr-10 border border-(--chat-border) placeholder:text-(--chat-text-muted) focus:outline-none focus:border-(--chat-border-active)"
+              oninput={() => {
+                updateAndSync({ apiKey });
+                if (supportsDynamicModels(provider)) loadModels();
+              }}
+              placeholder={isFreeModel ? "Optional for free model" : "Enter your API key"}
+              class="w-full bg-(--chat-input-bg) text-(--chat-text-primary) text-sm px-3 py-2 pr-16 border border-(--chat-border) placeholder:text-(--chat-text-muted) focus:outline-none focus:border-(--chat-border-active)"
               style={inputStyle}
             />
+            {#if apiKey}
+              <button
+                type="button"
+                onclick={() => updateAndSync({ apiKey: "" })}
+                class="absolute right-8 top-1/2 -translate-y-1/2 text-(--chat-text-muted) hover:text-(--chat-error) text-[10px]"
+                title={isFreeModel ? "Clear API key (optional for free)" : "Clear API key (required for this model!)"}
+              >
+                ✕
+              </button>
+            {/if}
             <button
               type="button"
               onclick={() => (showKey = !showKey)}
@@ -582,6 +727,24 @@
               {/if}
             </button>
           </div>
+          {#if isFreeModel}
+            <p class="text-[10px] text-(--chat-text-muted) mt-1">
+              Free model — API key optional. You can call directly without a key (rate limited).
+            </p>
+            {#if apiKey}
+              <button
+                type="button"
+                onclick={() => updateAndSync({ apiKey: "" })}
+                class="mt-1 text-[10px] text-(--chat-accent) hover:underline"
+              >
+                Use without API key (clear saved key)
+              </button>
+            {/if}
+          {:else if provider && model && !apiKey}
+            <p class="text-[10px] text-(--chat-error) mt-1">
+              API key required for {model}. Select a free model (· free) to use without a key.
+            </p>
+          {/if}
         </label>
       {/if}
 
@@ -591,7 +754,7 @@
             CORS Proxy
           </span>
           <p class="text-[10px] text-(--chat-text-muted) mt-0.5">
-            Required for Anthropic and some providers
+            Required for Anthropic, opencode & opencode-go (auto-enabled); enter a proxy URL below
           </p>
         </div>
         {@render toggleSwitch(

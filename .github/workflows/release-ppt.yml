@@ -50,7 +50,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy packages/powerpoint/dist --project-name=openppt --branch=main --commit-dirty=true
+          command: pages deploy packages/powerpoint/dist --project-name=openppt-longpt --branch=main --commit-dirty=true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

@@ -4,15 +4,13 @@ import {
   type ThinkingLevel as AgentThinkingLevel,
   type AgentTool,
 } from "@earendil-works/pi-agent-core";
+import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
 import {
-  type Api,
-  type AssistantMessage,
   getModel,
   getModels,
   getProviders,
-  type Model,
   streamSimple,
-} from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import type { AgentContext, StorageNamespace } from "./context";
 import {
   agentMessagesToChatMessages,
@@ -30,9 +28,18 @@ import {
 import {
   applyProxyToModel,
   buildCustomModel,
+  buildDynamicModel,
+  fetchModelsFromProvider,
+  getProxySetupError,
+  isModelFree,
+  loadCachedModels,
   loadSavedConfig,
+  needsOpencodeSessionHeader,
   type ProviderConfig,
+  resolveProxyUrl,
+  saveCachedModels,
   saveConfig,
+  supportsDynamicModels,
   type ThinkingLevel,
 } from "./provider-config";
 import {
@@ -131,8 +138,14 @@ export class AgentRuntime {
     this.context = context;
 
     const saved = loadSavedConfig(this.ns);
+    const isFree =
+      saved?.provider &&
+      saved?.model &&
+      isModelFree(saved.provider, saved.model);
     const validConfig =
-      saved?.provider && saved?.apiKey && saved?.model ? saved : null;
+      saved?.provider && saved?.model && (saved?.apiKey || isFree)
+        ? saved
+        : null;
     this.followMode = validConfig?.followMode ?? true;
     this.state = {
       messages: [],
@@ -202,6 +215,50 @@ export class AgentRuntime {
     }
   }
 
+  getDynamicModelsForProvider(provider: string): Model<Api>[] {
+    const cached = loadCachedModels(this.ns, provider);
+    if (!cached) return [];
+    const staticModels = this.getModelsForProvider(provider);
+    const staticIds = new Set(staticModels.map((m) => m.id));
+    const dynamic: Model<Api>[] = [];
+    for (const id of cached.ids) {
+      if (staticIds.has(id)) continue;
+      const model = buildDynamicModel(id, provider);
+      if (model) dynamic.push(model);
+    }
+    return dynamic;
+  }
+
+  async refreshModels(): Promise<Model<Api>[]> {
+    const config = this.config ?? this.state.providerConfig;
+    if (!config || !supportsDynamicModels(config.provider)) {
+      return this.getModelsForProvider(config?.provider || "");
+    }
+    const apiKey = await this.getActiveApiKey(config);
+    if (!apiKey) return this.getModelsForProvider(config.provider);
+
+    const proxyUrl = resolveProxyUrl(config);
+    try {
+      const ids = await fetchModelsFromProvider(
+        config.provider,
+        apiKey,
+        proxyUrl,
+      );
+      saveCachedModels(this.ns, config.provider, ids);
+      const staticModels = this.getModelsForProvider(config.provider);
+      const staticIds = new Set(staticModels.map((m) => m.id));
+      const merged = [...staticModels];
+      for (const id of ids) {
+        if (staticIds.has(id)) continue;
+        const model = buildDynamicModel(id, config.provider);
+        if (model) merged.push(model);
+      }
+      return merged;
+    } catch {
+      return this.getModelsForProvider(config.provider);
+    }
+  }
+
   private async getActiveApiKey(config: ProviderConfig): Promise<string> {
     if (config.authMethod !== "oauth") {
       return config.apiKey;
@@ -219,6 +276,17 @@ export class AgentRuntime {
     );
     saveOAuthCredentials(this.ns, config.provider, refreshed);
     return refreshed.access;
+  }
+
+  private getOpencodeSessionId(): string {
+    if (this.currentSessionId) return this.currentSessionId;
+    const key = `${this.ns.localStoragePrefix}-opencode-session`;
+    let fallback = localStorage.getItem(key);
+    if (!fallback) {
+      fallback = generateId();
+      localStorage.setItem(key, fallback);
+    }
+    return fallback;
   }
 
   private handleAgentEvent = (event: AgentEvent) => {
@@ -260,10 +328,18 @@ export class AgentRuntime {
       case "message_end": {
         if (event.message.role === "assistant") {
           const assistantMsg = event.message as AssistantMessage;
+          const isStreamInterruption =
+            assistantMsg.stopReason === "error" &&
+            Boolean(
+              assistantMsg.errorMessage?.includes("finish_reason") ||
+                assistantMsg.errorMessage?.includes("stream ended"),
+            );
           const isError =
-            assistantMsg.stopReason === "error" ||
+            (assistantMsg.stopReason === "error" && !isStreamInterruption) ||
             assistantMsg.stopReason === "aborted";
           const streamId = this.streamingMessageId;
+
+          let preservedPartial = false;
 
           this.updateMessages(
             (msgs) => {
@@ -272,6 +348,43 @@ export class AgentRuntime {
 
               if (isError) {
                 if (idx !== -1) {
+                  messages.splice(idx, 1);
+                }
+              } else if (isStreamInterruption && idx !== -1) {
+                const existingParts = messages[idx].parts;
+                const hasAnyContent = existingParts.some(
+                  (p) =>
+                    (p.type === "text" && p.text && p.text.trim()) ||
+                    (p.type === "thinking" && p.thinking && p.thinking.trim()),
+                );
+                if (hasAnyContent) {
+                  const parts = [...existingParts];
+                  let lastTextIdx = -1;
+                  for (let i = parts.length - 1; i >= 0; i--) {
+                    if (parts[i].type === "text") {
+                      lastTextIdx = i;
+                      break;
+                    }
+                  }
+                  if (lastTextIdx !== -1) {
+                    const tp = parts[lastTextIdx];
+                    if (tp.type === "text") {
+                      parts[lastTextIdx] = {
+                        ...tp,
+                        text:
+                          tp.text +
+                          "\n\n⚠️ Stream interrupted — partial response shown.",
+                      };
+                    }
+                  } else {
+                    parts.push({
+                      type: "text" as const,
+                      text: "⚠️ Stream interrupted — partial response shown.",
+                    });
+                  }
+                  messages[idx] = { ...messages[idx], parts };
+                  preservedPartial = true;
+                } else {
                   messages.splice(idx, 1);
                 }
               } else if (idx !== -1) {
@@ -284,17 +397,22 @@ export class AgentRuntime {
               return messages;
             },
             {
-              error: isError
-                ? assistantMsg.errorMessage || "Request failed"
-                : this.state.error,
-              sessionStats: isError
-                ? this.state.sessionStats
-                : {
-                    ...deriveStats(this.agent?.state.messages ?? []),
-                    contextWindow: this.state.sessionStats.contextWindow,
-                  },
+              sessionStats:
+                isError || isStreamInterruption
+                  ? this.state.sessionStats
+                  : {
+                      ...deriveStats(this.agent?.state.messages ?? []),
+                      contextWindow: this.state.sessionStats.contextWindow,
+                    },
             },
           );
+
+          if (isError || (isStreamInterruption && !preservedPartial)) {
+            this.update({
+              error: assistantMsg.errorMessage || "Request failed",
+            });
+          }
+
           this.streamingMessageId = null;
         }
         break;
@@ -435,18 +553,35 @@ export class AgentRuntime {
           config.model,
         );
       } catch {
-        return;
+        const dynamic = buildDynamicModel(config.model, config.provider);
+        if (!dynamic) return;
+        baseModel = dynamic;
       }
     }
     contextWindow = baseModel.contextWindow;
     this.config = config;
 
-    const proxiedModel = applyProxyToModel(baseModel, config);
-    const existingMessages = this.agent?.state.messages ?? [];
-
+    const proxyError = getProxySetupError(config);
     if (this.agent) {
       this.agent.abort();
     }
+
+    if (proxyError) {
+      this.agent = null;
+      this.pendingConfig = null;
+      this.update({
+        providerConfig: config,
+        error: proxyError,
+        sessionStats: {
+          ...this.state.sessionStats,
+          contextWindow,
+        },
+      });
+      return;
+    }
+
+    const proxiedModel = applyProxyToModel(baseModel, config);
+    const existingMessages = this.agent?.state.messages ?? [];
 
     const systemPrompt = this.adapter.buildSystemPrompt(
       this.skills,
@@ -463,10 +598,36 @@ export class AgentRuntime {
       },
       streamFn: async (model, context, options) => {
         const cfg = this.config ?? config;
-        const apiKey = await this.getActiveApiKey(cfg);
+        let apiKey = await this.getActiveApiKey(cfg);
+        if (!apiKey) {
+          const { isModelFree, shouldRequireApiKey } = await import(
+            "./provider-config"
+          );
+          if (shouldRequireApiKey(model.provider as string, model.id)) {
+            throw new Error(
+              `API key required for ${model.id}. This model is not free — please enter your API key in Settings, or select a free model (· free) to use without a key.`,
+            );
+          }
+          if (isModelFree(model.provider as string, model.id)) {
+            apiKey = "__free_no_key__";
+          }
+        }
+        const extra: {
+          sessionId?: string;
+          headers?: Record<string, string | null>;
+        } = {};
+        if (needsOpencodeSessionHeader(model)) {
+          const sessionId = options?.sessionId ?? this.getOpencodeSessionId();
+          extra.sessionId = sessionId;
+          extra.headers = {
+            ...(options?.headers ?? {}),
+            "x-opencode-session": sessionId,
+          };
+        }
         return streamSimple(model, context, {
           ...options,
           apiKey,
+          ...extra,
         });
       },
     });
@@ -506,7 +667,9 @@ export class AgentRuntime {
     }
     const agent = this.agent;
     if (!agent || !this.state.providerConfig) {
-      this.update({ error: "Please configure your API key first" });
+      this.update({
+        error: this.state.error || "Please configure your API key first",
+      });
       return;
     }
 
@@ -722,7 +885,11 @@ export class AgentRuntime {
       await syncSkillsToVfs(this.ns, this.context);
 
       const saved = loadSavedConfig(this.ns);
-      if (saved?.provider && saved?.apiKey && saved?.model) {
+      if (
+        saved?.provider &&
+        saved?.model &&
+        (saved?.apiKey || isModelFree(saved.provider, saved.model))
+      ) {
         this.applyConfig(saved);
       }
 
